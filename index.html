@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-TW">
+<head>
+    <meta charset="UTF-8"> 
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>倖存者模擬器</title>
+    <style>
+        :root {
+            --bg: #080e28;
+            --panel: #172d58;
+            --accent: #0c88bd;
+            --danger: #ff0000;
+            --good: #23d594;
+            --text: #ffffff;
+            --muted: #ffffff;
+        }
+
+        * { box-sizing: border-box; } /* 設定寬度包含內距 */
+
+        body {
+            margin: 0;  /* 貼滿螢幕 */ 
+            font-family: "Microsoft JhengHei", Arial, sans-serif;
+            color: var(--text);
+            background: /* 疊加兩種漸層顏色 */
+                radial-gradient(circle at top left, rgba(0, 179, 255, 0.452), transparent 50%),
+                linear-gradient(135deg, #0f1947, var(--bg));
+            min-height: 100vh; /* 網頁高度至少等於螢幕高度 */
+            padding: 24px; /* 四周留白 */
+        }
+
+        .game-shell {
+            /* 遊戲外框 */
+            max-width: 1100px;
+            margin: 0 auto;  /* 水平置中 */
+            background: var(--panel);
+            border: 1px solid rgba(255, 255, 255, 0.093);
+            border-radius: 25px;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.823);
+        }
+
+        .hero {
+            /* 遊戲標題 */
+            padding: 24px 24px 8px;
+            background: linear-gradient(90deg, rgba(56, 141, 231, 0.336), rgba(26, 165, 173, 0.254));
+        }
+
+        .hero h1 {
+            margin: 0 0 10px;
+            font-size: 2rem;
+        }
+
+        .hero p {
+            margin: 0;
+            line-height: 2;
+            color: var(--muted);
+        }
+
+        .main-layout {
+            display: grid;
+            grid-template-columns: 1.0fr 1.0fr;
+            gap: 20px;
+            padding: 20px 24px 24px;
+        }
+
+        .panel {
+            background: rgba(6, 13, 43, 0.72);
+            border: 1px solid rgba(255, 255, 255, 0.173);
+            border-radius: 25px;
+            padding: 20px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(120px, 1fr));
+            /* 建立兩欄，最小寬度為120px，平均分配剩餘空間 */
+            gap: 15px;
+            margin: 20px 0 20px;
+        }
+
+        .status-card {
+            padding: 12px;
+            border-radius: 18px;
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .status-card .label {
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 8px;
+        }
+
+        .status-card .value {
+            font-size: 1.25rem;
+            font-weight: bold;
+        }
+
+        .bar {
+            width: 100%;
+            height: 10px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 999px;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .bar > span {
+            display: block;
+            height: 100%;
+            border-radius: inherit; /* 繼承父層圓角設定 */
+            transition: width 0.3s ease;/* 滑動過渡 */
+        }
+
+        .bar.hp > span { background: linear-gradient(90deg, var(--good), #04f65d); }
+        .bar.stress > span { background: linear-gradient(90deg, #f1c16d, var(--danger)); }
+        .bar.progress > span { background: linear-gradient(90deg, var(--accent), #162cf3); }
+        .bar.favor > span { background: linear-gradient(90deg, #ebb7e3, #d806bc); }
+
+        .scene {
+            margin: 8px 0 10px;
+            padding: 15px;
+            border-radius: 18px;
+            background: linear-gradient(135deg, rgba(56,189,248,0.14), rgba(52,211,153,0.12));
+            border: 1px solid rgba(255, 255, 255, 0.097);
+        }
+
+        .scene .emoji { font-size: 1.5rem; margin-right: 8px; }
+
+        .actions {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .action-card {
+            border: none;
+            border-radius: 15px;
+            padding: 15px;
+            background: rgba(255,255,255,0.06);
+            color: var(--text);
+            cursor: pointer;
+            text-align: left;
+            transition: transform 0.15s ease, background 0.25s ease;
+            /* 變形和顏色 */
+        }
+
+        .action-card:hover {
+            /* 卡片浮起效果 */
+            transform: translateY(-3px);
+            background: rgba(56,189,248,0.16);
+        }
+
+        .action-card strong { display: block; margin-bottom: 4px; }
+        .action-card small { color: var(--muted); line-height: 1.5; }
+
+        button:disabled {
+            opacity: 0.55;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .log-box {
+            min-height: 250px;
+            max-height: 400px;
+            overflow-y: auto;
+            white-space: pre-wrap;
+            line-height: 1.7;
+            color: var(--muted);
+            font-size: 1rem;
+            padding: 12px;
+            border-radius: 14px;
+            background: rgba(4, 8, 28, 0.9);
+            border: 1px solid rgba(255, 255, 255, 0.099);
+        }
+
+        .footer-note {
+            margin-top: 10px;
+            color: var(--muted);
+            font-size: 0.95rem;
+        }
+
+        .overlay {
+            /* 彈跳視窗 */
+            display: none;
+            position: fixed;
+            inset: 0;
+            background: rgba(2, 6, 23, 0.8);
+            align-items: center; /* 保持螢幕正中央 */
+            justify-content: center; /* 保持螢幕正中央 */
+            padding: 20px;
+        }
+
+        .overlay.show { display: flex; }
+
+        .overlay-card {
+            background: linear-gradient(135deg, #111827, #0f172a);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 20px;
+            padding: 24px;
+            text-align: center;
+            max-width: 420px;
+            box-shadow: 0 16px 40px rgba(0,0,0,0.45);
+        }
+
+        .overlay-card h2 { margin-top: 0; }
+
+        .overlay-card button {
+            margin-top: 12px;
+            border: none;
+            border-radius: 999px;
+            padding: 10px 16px;
+            background: var(--accent);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        @media (max-width: 860px) {  /* 媒體查詢 小螢幕會垂直堆疊*/
+            .main-layout { grid-template-columns: 1fr; }
+            .actions { grid-template-columns: 1fr; }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="game-shell">
+        <div class="hero">
+            <h1>倖存者模擬器</h1>
+            <p>你是深夜衝刺報告的資工系大學生，時間只剩下 12 小時。<br>每一次選擇都會影響你的體力、壓力、進度與室友友好度。</p>
+        </div>
+
+        <div class="main-layout">
+            <section class="panel">
+                <div class="scene" id="sceneText">
+                    <span class="emoji">💻</span>
+                    <strong>夜深人靜，螢幕照亮了你的臉。</strong>
+                </div>
+
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="label">體力</div>
+                        <div class="value" id="hp">100%</div>
+                        <div class="bar hp"><span id="hpBar" style="width:100%"></span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">壓力</div>
+                        <div class="value" id="stress">0%</div>
+                        <div class="bar stress"><span id="stressBar" style="width:0%"></span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">進度</div>
+                        <div class="value" id="progress">0%</div>
+                        <div class="bar progress"><span id="progressBar" style="width:0%"></span></div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">室友友好</div>
+                        <div class="value" id="favor">50%</div>
+                        <div class="bar favor"><span id="favorBar" style="width:50%"></span></div>
+                    </div>
+                </div>
+
+                <div class="status-grid">
+                    <div class="status-card">
+                        <div class="label">魔爪庫存</div>
+                        <div class="value" id="monster">3</div>
+                    </div>
+                    <div class="status-card">
+                        <div class="label">剩餘時間</div>
+                        <div class="value" id="hours">12</div>
+                    </div>
+                </div>
+
+                <div class="actions">
+                    <button class="action-card" onclick="takeAction(1)">
+                        <strong>1. 寫程式</strong>
+                        <small>衝刺報告，獲得進度，但壓力與體力會下降。</small>
+                    </button>
+                    <button class="action-card" onclick="takeAction(2)">
+                        <strong>2. 休息</strong>
+                        <small>恢復體力，壓力下降，但報告進度可能稍微退後。</small>
+                    </button>
+                    <button class="action-card" onclick="takeAction(3)">
+                        <strong>3. 找室友聊天</strong>
+                        <small>放鬆心情，提升友好度，幫助你維持穩定。</small>
+                    </button>
+                    <button class="action-card" onclick="takeAction(4)">
+                        <strong>4. 喝魔爪庫存</strong>
+                        <small>短時間爆發，迅速推進報告，但也會讓你更緊繃。</small>
+                    </button>
+                </div>
+
+                <button class="action-card" onclick="resetGame()">
+                    <strong>重新開始</strong>
+                    <small>重置所有狀態，重新挑戰期末。</small>
+                </button>
+            </section>
+
+            <section class="panel">
+                <h2 style="margin-top:0">戰況紀錄</h2>
+                <div id="log" class="log-box"></div>
+                <div class="footer-note" id="tips">提示：在壓力過高、體力耗盡或時間用完時，遊戲就會結束。</div>
+            </section>
+        </div>
+    </div>
+
+    <div class="overlay" id="overlay">
+        <div class="overlay-card">
+            <h2 id="overlayTitle">遊戲結束</h2>
+            <p id="overlayMessage">結局已經生成。</p>
+            <button onclick="resetGame(); closeOverlay();">再玩一次</button>
+        </div>
+    </div>
+
+    <script>
+        const state = {
+            hp: 100,
+            stress: 20,
+            progress: 0,
+            roommateFavor: 50,
+            monsterCount: 3,
+            hoursLeft: 12,
+            gameOver: false,
+            logMessages: []
+        };
+
+        function clampStats() {
+            state.hp = Math.max(0, Math.min(100, state.hp));
+            state.stress = Math.max(0, Math.min(100, state.stress));
+            state.progress = Math.max(0, Math.min(100, state.progress));
+            state.roommateFavor = Math.max(0, Math.min(100, state.roommateFavor));
+        }
+
+        function applyEvent(hpChange, stressChange, progressChange, favorChange) {
+            state.hp += hpChange;
+            state.stress += stressChange;
+            state.progress += progressChange;
+            state.roommateFavor += favorChange;
+            clampStats();
+        }
+
+        function isAlive() { return state.hp > 0; }
+        function isStressedOut() { return state.stress >= 100; }
+        function isWinner() { return state.progress >= 100; }
+        function getRandom(min, max) { return Math.floor(Math.random() * (max - min + 1)) + min; }
+
+        function addLog(message) {
+            state.logMessages.push(message);
+            const log = document.getElementById('log');
+            log.textContent = state.logMessages.join('\n');
+            log.scrollTop = log.scrollHeight;
+        }
+
+        function updateStats() {
+            document.getElementById('hp').textContent = state.hp + '%';
+            document.getElementById('stress').textContent = state.stress + '%';
+            document.getElementById('progress').textContent = state.progress + '%';
+            document.getElementById('favor').textContent = state.roommateFavor + '%';
+            document.getElementById('monster').textContent = state.monsterCount;
+            document.getElementById('hours').textContent = state.hoursLeft;
+
+            document.getElementById('hpBar').style.width = state.hp + '%';
+            document.getElementById('stressBar').style.width = state.stress + '%';
+            document.getElementById('progressBar').style.width = state.progress + '%';
+            document.getElementById('favorBar').style.width = state.roommateFavor + '%';
+
+            const scene = document.getElementById('sceneText');
+            if (state.stress >= 80) {
+                scene.innerHTML = '<span class="emoji">⚡</span><strong>壓力爆表，連思緒都在抖。</strong>';
+            } else if (state.hp <= 30) {
+                scene.innerHTML = '<span class="emoji">😵</span><strong>你快撐不住了，必須先補充體力。</strong>';
+            } else if (state.progress >= 80) {
+                scene.innerHTML = '<span class="emoji">🔥</span><strong>報告接近完成，最後一段衝刺。</strong>';
+            } else {
+                scene.innerHTML = '<span class="emoji">💻</span><strong>夜深人靜，螢幕照亮你的臉。</strong>';
+            }
+        }
+
+        function setTips(text) {
+            document.getElementById('tips').textContent = text;
+        }
+
+        function showOverlay(title, message) {
+            document.getElementById('overlayTitle').textContent = title;
+            document.getElementById('overlayMessage').textContent = message;
+            document.getElementById('overlay').classList.add('show');
+        }
+
+        function closeOverlay() {
+            document.getElementById('overlay').classList.remove('show');
+        }
+
+        function handleRest() {
+            applyEvent(10, -20, -5, 0);
+            addLog('你倒在床上休息，雖然怕睡過頭但仍然放鬆一下。');
+            const extraSleep = getRandom(0, 2);
+            if (extraSleep > 0) {
+                state.hoursLeft -= extraSleep;
+                addLog(`你不小心睡過頭，多睡了 ${extraSleep} 小時。`);
+                if (state.hoursLeft < 0) state.hoursLeft = 0;
+            } else {
+                addLog('你準時醒來，沒有賴床。');
+            }
+        }
+
+        function triggerRandomEvent() {
+            const chance = getRandom(1, 100);
+            if (chance <= 30) {
+                const eventType = getRandom(1, 6);
+                switch (eventType) {
+                    case 1:
+                        addLog('[事件] 網路斷線！你必須重新連接，進度被拖慢。');
+                        applyEvent(-5, 8, -6, 0);
+                        break;
+                    case 2:
+                        addLog('[事件] 助教突襲修改報告內容，報告重新處理。');
+                        applyEvent(-8, 10, -8, 0);
+                        break;
+                    case 3:
+                        addLog('[事件] 電腦當機，資料還沒存檔！');
+                        applyEvent(-10, 7, -6, 0);
+                        break;
+                    case 4:
+                        addLog('[事件] 室友大叫你太吵，友好度掉了。');
+                        applyEvent(-5, 10, 0, -10);
+                        break;
+                    case 5:
+                        addLog('[事件] 隔壁宿舍唱歌太大聲，讓你無法專心。');
+                        applyEvent(0, 10, 0, 0);
+                        break;
+                    case 6:
+                        addLog('[事件] 你發現前人留下的範例程式，進度稍微加快。');
+                        applyEvent(0, 4, 6, 0);
+                        break;
+                }
+            }
+        }
+
+        function checkGameOver() {
+            if (state.progress >= 100) {
+                addLog('恭喜！你把進度推上 100%，交出了一份超完美報告！');
+                state.gameOver = true;
+                showOverlay('勝利！', '你成功活過期末地獄，並把報告交出了。');
+            } else if (!isAlive()) {
+                addLog('你累垮了，宿舍的黑暗力量終於擊垮你。');
+                state.gameOver = true;
+                showOverlay('失敗', '體力耗盡，你在宿舍裡睡得跟豬一樣。');
+            } else if (isStressedOut()) {
+                addLog('壓力爆表，整個人像是快燒掉的電腦。');
+                state.gameOver = true;
+                showOverlay('失敗', '壓力爆表，報告也沒能完成。');
+            } else if (state.hoursLeft <= 0) {
+                addLog('時間到了，報告還沒完成，遊戲失敗。');
+                state.gameOver = true;
+                showOverlay('時間到', '期限到了，但你的報告還沒有完成。');
+            }
+        }
+
+        function takeAction(action) {
+            if (state.gameOver) return;
+
+            switch (action) {
+                case 1:
+                    let progressChange = 20;
+                    let stressChange = 20;
+                    if (state.stress >= 70) {
+                        progressChange = 9;
+                        stressChange += 6;
+                        addLog('你壓力太高了，注意力不集中，進度變慢了。');
+                    } else if (state.hp <= 40) {
+                        progressChange = 10;
+                        stressChange += 4;
+                        addLog('你體力剩下不多，寫程式效率下降了。');
+                    }
+                    applyEvent(-20, stressChange, progressChange, 0);
+                    addLog('你開始猛寫程式，鍵盤敲得像打鼓一樣。');
+                    break;
+                case 2:
+                    handleRest();
+                    break;
+                case 3:
+                    applyEvent(10, -15, 0, 20);
+                    addLog('你跟室友聊八卦，暫時忘掉報告。');
+                    break;
+                case 4:
+                    if (state.monsterCount > 0) {
+                        state.monsterCount--;
+                        if (state.stress >= 60) {
+                            applyEvent(8, 5, 5, 0);
+                            addLog('你心情緊繃，魔爪只是讓你更緊張，進度提升有限。');
+                        } else {
+                            applyEvent(40, 30, 35, 0);
+                            addLog('你喝了一罐魔爪，瞬間感覺有超能力。');
+                        }
+                    } else {
+                        addLog('你沒有魔爪了，只能喝水慢慢恢復。');
+                        applyEvent(8, -5, 0, 0);
+                    }
+                    break;
+                default:
+                    addLog('無效行動，浪費了一回合。');
+                    applyEvent(-5, 5, 0, 0);
+                    break;
+            }
+
+            state.hoursLeft -= 1;
+            addLog(`回合結束，剩下 ${state.hoursLeft} 小時。`);
+            triggerRandomEvent();
+            updateStats();
+            if (state.stress >= 80) {
+                setTips('壓力高到快爆炸，建議你先找室友聊天或休息。');
+            } else if (state.hp <= 30) {
+                setTips('體力低落，先補充再衝刺。');
+            } else if (state.progress >= 80) {
+                setTips('進度已經很高了，別在最後一刻翻車。');
+            } else {
+                setTips('每一步都很重要，選擇要慎重。');
+            }
+            checkGameOver();
+        }
+
+        function resetGame() {
+            state.hp = 100;
+            state.stress = 20;
+            state.progress = 0;
+            state.roommateFavor = 50;
+            state.monsterCount = 3;
+            state.hoursLeft = 12;
+            state.gameOver = false;
+            state.logMessages = [];
+            setTips('提示：在壓力過高、體力耗盡或時間用完時，遊戲就會結束。');
+            addLog('=== 資工系宿舍生存戰 ===');
+            addLog('你只有 12 小時，把報告進度推到 100%，否則期限就過了。');
+            updateStats();
+            closeOverlay();
+        }
+
+        function init() {
+            updateStats();
+            addLog('=== 資工系宿舍生存戰 ===');
+            addLog('你只有 12 小時，把報告進度推到 100%，否則期限就過了。');
+        }
+
+        init();
+    </script>
+</body>
+</html>
